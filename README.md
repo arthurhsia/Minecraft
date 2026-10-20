@@ -50,8 +50,8 @@ Three control profiles are included: **face + hand** (default), **face only** (f
 Requirements: a Mac (Apple Silicon recommended), a webcam, Minecraft Education Edition, and either Anaconda/Miniconda or Python 3.10–3.12.
 
 ```bash
-git clone https://github.com/<your-username>/minecraft-biogaming.git
-cd minecraft-biogaming
+git clone https://github.com/arthurhsia/Minecraft.git
+cd Minecraft
 ```
 
 Then double-click the launchers in Finder, in order:
