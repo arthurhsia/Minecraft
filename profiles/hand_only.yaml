@@ -1,0 +1,48 @@
+# =====================================================================================
+#  hand_only.yaml  -  no face tracking: hands do movement, camera and clicks
+# =====================================================================================
+# Dominant hand palm is a joystick. Two modes, toggled by pinching with the OTHER
+# (off) hand for 0.5 s:
+#   walk mode : palm offset = WASD
+#   look mode : palm offset = camera (rate control, like a thumbstick)
+# Dominant fist = attack, dominant pinch = use, off-hand fist = jump.
+# Units: palm offsets in palm units (+-1 = calibrated full reach, dy + = UP);
+# curl 0 (open) .. 1 (fist); pinch = thumb-index distance / palm size (~0 touching).
+# All thresholds are tunable starting points.
+
+name: hand_only
+description: Dominant palm = joystick (walk/look modes), off-hand pinch toggles mode.
+
+mode_toggle:
+  source: offhand.pinch         # off-hand thumb and index touching ...
+  op: "<"
+  on: 0.25
+  hold_s: 0.5                   # ... for 0.5 s cycles walk -> look -> walk
+  modes: [walk, look]
+  initial: walk
+
+bindings:
+  - {action: forward, source: hand.palm_dy, op: ">", on: 0.35, off: 0.25, mode: walk}
+  - {action: back,    source: hand.palm_dy, op: "<", on: -0.35, off: -0.25, mode: walk}
+  - {action: right,   source: hand.palm_dx, op: ">", on: 0.35, off: 0.25, mode: walk}
+  - {action: left,    source: hand.palm_dx, op: "<", on: -0.35, off: -0.25, mode: walk}
+  - {action: sprint,  source: hand.palm_dy, op: ">", on: 0.85, off: 0.70, mode: walk}
+  - {action: left_button,  source: gesture.fist}
+  - {action: right_button, source: gesture.pinch}
+  # Off-hand fist = jump (mean curl index..little above 0.6, release below 0.4).
+  - {action: jump, source: offhand.curl_mean, op: ">", on: 0.6, off: 0.4}
+
+look:
+  mode: look
+  yaw_source: hand.palm_dx      # palm right -> camera right
+  pitch_source: hand.palm_dy    # palm up    -> camera up
+  deadzone_deg: 0.25            # NOTE: in palm units here (the source's units), not degrees
+  gain_px_per_deg_s: 900.0      # px/s per palm unit beyond the deadzone
+  expo: 0.4
+  expo_ref_deg: 0.5             # palm units
+  max_px_per_frame: 40.0
+  invert_y: false
+
+pause: {source: gesture.both_open, hold_s: 1.0}
+
+bindings_keys: {forward: w, back: s, left: a, right: d, jump: space, sneak: shift, sprint: ctrl, inventory: e}

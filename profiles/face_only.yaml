@@ -1,0 +1,57 @@
+# =====================================================================================
+#  face_only.yaml  -  no hands needed (e.g. bilateral upper-limb difference, SCI)
+# =====================================================================================
+# Two modes, toggled by closing BOTH eyes for 0.6 s (a deliberate long blink):
+#   walk mode : head roll = strafe, lean toward/away from the camera = forward/back
+#   look mode : head yaw/pitch = camera (movement bindings are released)
+# Jump and clicks work in both modes. All thresholds are tunable starting points.
+# Units: degrees for head angles; face.scale_ratio is face size / neutral - 1
+# (+0.10 = face 10 % bigger = leaning in); blendshapes 0..1 with resting level removed.
+# Threshold rule:  op ">" -> ON when value > on, OFF when value < off  (off <= on)
+#                  op "<" -> ON when value < on, OFF when value > off  (off >= on)
+
+name: face_only
+description: Head roll strafes, leaning walks, long blink toggles look/walk mode.
+
+mode_toggle:
+  source: gesture.both_blink    # min(eyeBlinkLeft, eyeBlinkRight) > 0.5 (gestures.both_blink)
+  hold_s: 0.6                   # normal blinks are ~0.1-0.3 s, so they never toggle
+  modes: [walk, look]
+  initial: walk
+
+bindings:
+  # ---- Walk mode ---------------------------------------------------------------------
+  # Tilt head toward right shoulder > 10 deg = strafe right (release below 6 deg).
+  - {action: right,   source: face.roll, op: ">", on: 10.0, off: 6.0, mode: walk}
+  - {action: left,    source: face.roll, op: "<", on: -10.0, off: -6.0, mode: walk}
+  # Lean in (face 8 % larger than neutral) = forward; lean back = backward.
+  - {action: forward, source: face.scale_ratio, op: ">", on: 0.08, off: 0.05, mode: walk}
+  - {action: back,    source: face.scale_ratio, op: "<", on: -0.08, off: -0.05, mode: walk}
+
+  # ---- Both modes --------------------------------------------------------------------
+  - {action: jump,         source: face.blend.jawOpen,     op: ">", on: 0.35, off: 0.20}
+  # Brow raise = attack / mine (held). 120 ms debounce.
+  - {action: left_button,  source: face.blend.browInnerUp, op: ">", on: 0.40, off: 0.25, min_hold_ms: 120}
+  # Pucker lips OR puff cheeks = use / place (held). Two bindings on one action = OR.
+  - {action: right_button, source: face.blend.mouthPucker, op: ">", on: 0.45, off: 0.30, min_hold_ms: 120}
+  - {action: right_button, source: face.blend.cheekPuff,   op: ">", on: 0.40, off: 0.25, min_hold_ms: 120}
+
+look:
+  mode: look                    # camera only moves in look mode so look and walk don't fight
+  yaw_source: face.yaw
+  pitch_source: face.pitch
+  deadzone_deg: 6.0
+  gain_px_per_deg_s: 30.0
+  expo: 0.3
+  expo_ref_deg: 15.0
+  max_px_per_frame: 40.0
+  invert_y: false
+
+# Big two-sided smile held for 1.5 s toggles pause (F8 in the app also works).
+pause: {source: gesture.smile, hold_s: 1.5}
+
+gestures:
+  both_blink: {on: 0.5, off: 0.3}
+  smile:      {on: 0.5, off: 0.3}
+
+bindings_keys: {forward: w, back: s, left: a, right: d, jump: space, sneak: shift, sprint: ctrl, inventory: e}

@@ -1,0 +1,66 @@
+# =====================================================================================
+#  face_hand.yaml  -  DEFAULT control scheme: head looks, dominant hand moves & clicks
+# =====================================================================================
+# Every number below is a starting point and is meant to be TUNED per player.
+# Units (all values are relative to the calibrated neutral pose, see calibration.py):
+#   * head angles (face.yaw / face.pitch / face.roll) ........ degrees
+#   * palm offsets (hand.palm_dx / hand.palm_dy) ............. "palm units": +-1 = the
+#       calibrated comfortable maximum reach (palm_range); dx + = right, dy + = UP
+#   * blendshapes (face.blend.*) .............................. 0..1, resting level removed
+#   * gestures (gesture.*) .................................... 0 or 1
+# Threshold rule:  op ">" -> turns ON when value > on, OFF when value < off  (off <= on)
+#                  op "<" -> turns ON when value < on, OFF when value > off  (off >= on)
+# The gap between "on" and "off" is the hysteresis band that stops keys chattering.
+# min_hold_ms   = condition must last this long before the action starts (debounce).
+# min_release_ms= condition must be gone this long before the action stops.
+
+name: face_hand
+description: Head = camera, dominant palm = WASD joystick, fist = attack, pinch = use.
+
+bindings:
+  # ---- Movement: the palm is a virtual joystick around its neutral spot ------------
+  # Enter at 0.35 of full reach, leave at 0.25 -> ~1/3 of the box is a deadzone.
+  - {action: forward, source: hand.palm_dy, op: ">", on: 0.35, off: 0.25}
+  - {action: back,    source: hand.palm_dy, op: "<", on: -0.35, off: -0.25}
+  - {action: right,   source: hand.palm_dx, op: ">", on: 0.35, off: 0.25}
+  - {action: left,    source: hand.palm_dx, op: "<", on: -0.35, off: -0.25}
+  # Sprint = SMILE (either side), separate from walking so you don't have to find
+  # the edge of the joystick. Minecraft keeps sprinting after Ctrl is let go, as
+  # long as you keep walking forward - so a quick smile while walking is enough.
+  - {action: sprint,  source: face.blend.mouthSmileLeft,  op: ">", on: 0.45, off: 0.25, min_hold_ms: 120}
+  - {action: sprint,  source: face.blend.mouthSmileRight, op: ">", on: 0.45, off: 0.25, min_hold_ms: 120}
+
+  # ---- Clicks ------------------------------------------------------------------------
+  # Fist (Rest/Flex/Hold/Extend curl state machine, thresholds under gestures.fist)
+  # holds the LEFT button = attack / mine.
+  - {action: left_button,  source: gesture.fist}
+  # Thumb-index pinch holds the RIGHT button = use / place (80 ms debounce in gestures.pinch).
+  - {action: right_button, source: gesture.pinch}
+
+  # ---- Face --------------------------------------------------------------------------
+  # Mouth open = jump; held while open so you can swim up / climb ladders.
+  - {action: jump,  source: face.blend.jawOpen, op: ">", on: 0.35, off: 0.20}
+  # Eyebrows raised = sneak. 150 ms hold so a surprised blink of the brows is ignored.
+  - {action: sneak, source: face.blend.browInnerUp, op: ">", on: 0.40, off: 0.25, min_hold_ms: 150}
+
+look:
+  yaw_source: face.yaw          # turn head right -> camera turns right
+  pitch_source: face.pitch      # tilt head up    -> camera looks up
+  deadzone_deg: 6.0             # +-6 deg around neutral = no camera motion
+  gain_px_per_deg_s: 30.0       # 10 deg past the deadzone -> ~300 px/s
+  expo: 0.3                     # 0 = linear; higher = gentler near centre, faster at edges
+  expo_ref_deg: 15.0            # angle (past deadzone) where expo does not change speed
+  max_px_per_frame: 40.0        # hard cap per frame so a tracking glitch cannot spin you
+  invert_y: false
+
+# Both palms open and visible for 1.0 s toggles pause (paused = everything released).
+pause: {source: gesture.both_open, hold_s: 1.0}
+
+# Optional threshold overrides for derived gestures (defaults shown).
+gestures:
+  fist:      {theta_on: 0.6, theta_off: 0.4, eps_theta: 0.25, eps_thetadot: 1.0}
+  pinch:     {on: 0.30, off: 0.45, min_hold_ms: 80, max_curl_mean: 0.5}
+  open_palm: {on: 0.20, off: 0.30, min_pinch: 0.5}
+
+# Logical action -> physical key (Minecraft defaults). Change if you rebound keys in-game.
+bindings_keys: {forward: w, back: s, left: a, right: d, jump: space, sneak: shift, sprint: ctrl, inventory: e}

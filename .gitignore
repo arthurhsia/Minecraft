@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Large model files (download with scripts/download_models.py)
+models/*.task
+models/*.part
+
+# Experiment data (participant recordings stay local; share only anonymised summaries)
+sessions/
+demo_sessions/
+analysis/
+calibration*.json
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local archives
+.project.tgz
+*.tgz

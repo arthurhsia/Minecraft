@@ -1,0 +1,11 @@
+# mcbio - webcam face + hand controller for Minecraft Education Edition
+# Python >= 3.10 (macOS Apple Silicon target). Install:  pip install -r requirements.txt
+mediapipe>=0.10.14          # Tasks API (HandLandmarker, FaceLandmarker); models via scripts/download_models.py
+opencv-python               # camera + HUD window (NOT the -headless build, which has no imshow)
+numpy
+pyyaml                      # control profiles
+pynput                      # keyboard/mouse output + global F8 hotkey
+pyserial                    # optional Arduino Leonardo HID backend
+matplotlib                  # scripts/analyze_session.py plots
+pytest                      # tests (synthetic, no camera needed)
+pyobjc-framework-Quartz; sys_platform == "darwin"   # relative mouse events for the Minecraft camera
