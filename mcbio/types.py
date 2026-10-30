@@ -26,6 +26,7 @@ class HandFeatures:
     palm: tuple[float, float] = (0.5, 0.5)          # mirrored normalized image coords
     curl: tuple[float, float, float, float, float] = (0.0, 0.0, 0.0, 0.0, 0.0)  # thumb..little, 0 straight .. 1 curled
     pinch: float = 1.0                              # thumb-index tip distance / palm size
+    finger_pinch: tuple[float, float, float] = (9.0, 9.0, 9.0)  # thumb tip to middle/ring/little tip / palm size
     scale: float = 0.0                              # palm size in image units
     landmarks: list | None = None                   # 21 x (x, y, z), mirrored normalized
 

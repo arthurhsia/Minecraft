@@ -61,6 +61,9 @@ JOINT_FULL_FLEX_DEG: dict[str, tuple[float, float, float]] = {
 }
 
 WRIST, THUMB_TIP, INDEX_MCP, INDEX_TIP, MIDDLE_MCP, PINKY_MCP = 0, 4, 5, 8, 9, 17
+MIDDLE_TIP, RING_TIP, LITTLE_TIP = 12, 16, 20
+#: Fingers (besides the index) that the thumb can pinch, in HandFeatures.finger_pinch order.
+FINGER_PINCHES: tuple[str, ...] = ("middle", "ring", "little")
 PALM_POINTS = (WRIST, INDEX_MCP, MIDDLE_MCP, PINKY_MCP)
 
 # --------------------------------------------------------------------------- #
@@ -170,6 +173,7 @@ def hand_features_from_landmarks(
     * scale = |wrist -> middle MCP| in image-height units (a palm-length proxy that
       shrinks as the hand moves away from the camera).
     * pinch = |thumb tip - index tip| / palm length (dimensionless).
+    * finger_pinch = the same ratio for the middle, ring and little fingertips.
     """
     img = np.asarray(lms21_xyz, dtype=float)
     if img.shape[0] != 21:
@@ -184,6 +188,11 @@ def hand_features_from_landmarks(
     geom = np.asarray(world_xyz, dtype=float) if world_xyz is not None else iso
     palm_len = float(np.linalg.norm(geom[MIDDLE_MCP] - geom[WRIST]))
     pinch = float(np.linalg.norm(geom[THUMB_TIP] - geom[INDEX_TIP]) / palm_len) if palm_len > 1e-9 else 1.0
+    # Thumb tip to the middle / ring / little fingertips, same normalisation as pinch.
+    finger_pinch = tuple(
+        float(np.linalg.norm(geom[THUMB_TIP] - geom[tip]) / palm_len) if palm_len > 1e-9 else 9.0
+        for tip in (MIDDLE_TIP, RING_TIP, LITTLE_TIP)
+    )
 
     return HandFeatures(
         present=True,
@@ -191,6 +200,7 @@ def hand_features_from_landmarks(
         palm=(float(palm_xy[0]), float(palm_xy[1])),
         curl=finger_curls(geom),
         pinch=pinch,
+        finger_pinch=finger_pinch,  # type: ignore[arg-type]
         scale=scale,
         landmarks=[tuple(map(float, pt)) for pt in img],
     )
@@ -393,7 +403,8 @@ class FeatureExtractor:
     ) -> None:
         self.aspect = float(aspect)
         self.swap_handedness = swap_handedness
-        self._params = {"head": head_params, "palm": palm_params, "curl": curl_params, "pinch": pinch_params}
+        self._params = {"head": head_params, "palm": palm_params, "curl": curl_params, "pinch": pinch_params,
+                        "fpinch": pinch_params}
         self._d_cutoff = d_cutoff
         self._head = self._make("head")
         self._hand_filters: dict[str, dict[str, OneEuroFilter]] = {}
@@ -427,11 +438,12 @@ class FeatureExtractor:
         for hand in feats.hands:
             key = hand.handedness if hand.handedness not in seen else f"{hand.handedness}#2"
             seen.add(key)
-            f = self._hand_filters.setdefault(key, {k: self._make(k) for k in ("palm", "curl", "pinch")})
+            f = self._hand_filters.setdefault(key, {k: self._make(k) for k in ("palm", "curl", "pinch", "fpinch")})
             px, py = f["palm"](hand.palm, t)
             hand.palm = (float(px), float(py))
             hand.curl = tuple(float(np.clip(c, 0.0, 1.0)) for c in f["curl"](hand.curl, t))  # type: ignore[assignment]
             hand.pinch = float(max(f["pinch"](hand.pinch, t), 0.0))
+            hand.finger_pinch = tuple(float(max(v, 0.0)) for v in f["fpinch"](hand.finger_pinch, t))  # type: ignore[assignment]
         for key in list(self._hand_filters):
             if key not in seen:
                 del self._hand_filters[key]
@@ -497,11 +509,15 @@ def flatten(features: Features, calib: Calibration, dominant: str | None = None)
         for name, c in zip(FINGERS, dom.curl):
             out[f"hand.curl_{name}"] = float(c)
         out["hand.pinch"] = float(dom.pinch)
+        for name, v in zip(FINGER_PINCHES, dom.finger_pinch):
+            out[f"hand.pinch_{name}"] = float(v)
     else:
         for k in ("hand.present", "hand.palm_dx", "hand.palm_dy", "hand.curl_mean", "hand.pinch"):
             out[k] = 0.0
         for name in FINGERS:
             out[f"hand.curl_{name}"] = 0.0
+        for name in FINGER_PINCHES:
+            out[f"hand.pinch_{name}"] = 0.0
 
     if off is not None:
         out["offhand.present"] = 1.0

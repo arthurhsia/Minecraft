@@ -392,6 +392,8 @@ class App:
         self._prev_mapper_paused = False
         self._prev_actions: set[str] = set()
         self.last_cmds: Commands = Commands.idle(paused=True)
+        self.hud_detail = False                     # H toggles the detailed (tuning) HUD
+        self._recent_taps: dict[str, float] = {}    # tap name -> show-until time (HUD flash)
 
     # ------------------------------------------------------------------ setup
     def _setup(self) -> None:
@@ -669,6 +671,9 @@ class App:
             st.held_frames[a] += 1
         for tap in out.taps:
             st.taps[tap] += 1
+            self._recent_taps[tap] = t + 0.8
+            if not self.cfg.hud and self.cfg.verbose:
+                self.print(f"t={t:7.2f}s  tap {tap}")
         self._prev_actions = actions
 
         cue = None
@@ -703,6 +708,8 @@ class App:
             pause_hint=self.pause_hint,
             neutral_palm=self.calib.neutral_palm if self.calib else None,
             palm_range=self.calib.palm_range if self.calib else None,
+            detail=self.hud_detail,
+            recent_taps=[k for k, until in self._recent_taps.items() if t < until],
         )
         if self.flow is not None:
             st.prompt, st.prompt_progress, st.prompt_count = self.flow.prompt, self.flow.progress, self.flow.count
@@ -717,6 +724,8 @@ class App:
             self.stop = True
         elif key in (ord("p"), ord(" ")):
             self.toggle_pause(t)
+        elif key == ord("h"):
+            self.hud_detail = not self.hud_detail
         elif key == ord("c") and self.state != CALIBRATING:
             self.start_calibration()
 
@@ -788,7 +797,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m mcbio",
         description="Control Minecraft Education Edition with your face and hand (webcam).",
-        epilog="Keys: F8 (global) or P/Space in the HUD = pause/resume, C = recalibrate, Esc/Q = quit.")
+        epilog="Keys: F8 (global) or P/Space in the HUD = pause/resume, C = recalibrate, "
+               "H = detailed HUD, Esc/Q = quit.")
     p.add_argument("--profile", default=str(DEFAULT_PROFILE), help="control profile YAML (default: face_hand)")
     p.add_argument("--backend", choices=("pynput", "leonardo", "dry"), default="pynput",
                    help="output: pynput (this Mac), leonardo (Arduino USB HID), dry (print only)")

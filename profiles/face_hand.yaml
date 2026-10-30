@@ -15,7 +15,8 @@
 # min_release_ms= condition must be gone this long before the action stops.
 
 name: face_hand
-description: Head = camera, dominant palm = WASD joystick, fist = attack, pinch = use.
+description: Head = camera, dominant palm = WASD joystick, fist = attack, pinch = use,
+  thumb-middle = inventory, thumb-ring / thumb-little = next / previous hotbar slot.
 
 bindings:
   # ---- Movement: the palm is a virtual joystick around its neutral spot ------------
@@ -36,6 +37,13 @@ bindings:
   - {action: left_button,  source: gesture.fist}
   # Thumb-index pinch holds the RIGHT button = use / place (80 ms debounce in gestures.pinch).
   - {action: right_button, source: gesture.pinch}
+
+  # ---- Thumb-to-finger pinches = one-shot taps (thresholds under gestures.finger_pinch) ----
+  # Only the fingertip NEAREST the thumb counts, so a middle-finger pinch never also
+  # fires the index pinch (right click). Ignored while the hand is curled into a fist.
+  - {action: inventory,   source: gesture.pinch_middle}                   # E, once per pinch
+  - {action: hotbar_next, source: gesture.pinch_ring,   repeat_ms: 450}   # scroll down = next slot
+  - {action: hotbar_prev, source: gesture.pinch_little, repeat_ms: 450}   # scroll up = previous slot
 
   # ---- Face --------------------------------------------------------------------------
   # Mouth open = jump; held while open so you can swim up / climb ladders.
@@ -60,7 +68,10 @@ pause: {source: gesture.both_open, hold_s: 1.0}
 gestures:
   fist:      {theta_on: 0.6, theta_off: 0.4, eps_theta: 0.25, eps_thetadot: 1.0}
   pinch:     {on: 0.30, off: 0.45, min_hold_ms: 80, max_curl_mean: 0.5}
+  finger_pinch: {on: 0.30, off: 0.45, min_hold_ms: 100, max_curl_mean: 0.5}
   open_palm: {on: 0.20, off: 0.30, min_pinch: 0.5}
 
 # Logical action -> physical key (Minecraft defaults). Change if you rebound keys in-game.
-bindings_keys: {forward: w, back: s, left: a, right: d, jump: space, sneak: shift, sprint: ctrl, inventory: e}
+# If the hotbar moves the wrong way, swap scroll_down / scroll_up here.
+bindings_keys: {forward: w, back: s, left: a, right: d, jump: space, sneak: shift, sprint: ctrl, inventory: e,
+                hotbar_next: scroll_down, hotbar_prev: scroll_up}

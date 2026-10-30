@@ -299,6 +299,7 @@ class SerialLeonardoOutput(OutputBackend):
         K+<key> / K-<key>   key down / up; <key> = single char or a NAMED_KEYS name
         M <dx> <dy>         relative mouse move, each in -127..127 (bigger moves split)
         B+L B-L B+R B-R     mouse button down / up
+        W <steps>           mouse wheel, + = up (hotbar previous / next)
         R                   release everything
         P                   ping -> board answers "OK"
 
@@ -364,6 +365,9 @@ class SerialLeonardoOutput(OutputBackend):
             self._send(f"M {cx} {cy}")
             dx -= cx
             dy -= cy
+
+    def _scroll(self, steps: int) -> None:
+        self._send(f"W {max(-self.MAX_STEP, min(self.MAX_STEP, int(steps)))}")
 
     def _release_everything(self) -> None:
         # One "R" releases every key and button on the board (sent even if we think
