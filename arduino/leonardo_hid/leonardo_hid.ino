@@ -16,6 +16,7 @@
  *   M <dx> <dy>  move the mouse by dx, dy pixels (each -127..127; + dy = down)
  *   B+L / B-L    left mouse button down / up      (attack / mine)
  *   B+R / B-R    right mouse button down / up     (use / place)
+ *   W <n>        mouse wheel by n steps (-127..127; + = up)   (hotbar previous / next)
  *   R            release every key and button
  *   P            ping: the board answers "OK"
  *
@@ -103,6 +104,10 @@ void handleLine(char *cmd) {
       if (cmd[2] != 'L' && cmd[2] != 'R') return;
       if (cmd[1] == '+') { Mouse.press(button); anythingHeld = true; }
       else if (cmd[1] == '-') Mouse.release(button);
+      break;
+    }
+    case 'W': {                       // W <n>  mouse wheel
+      Mouse.move(0, 0, clampStep(strtol(cmd + 1, NULL, 10)));
       break;
     }
     case 'R':                         // release all

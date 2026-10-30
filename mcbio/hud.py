@@ -4,7 +4,14 @@ Everything here is a *pure drawing function* that takes a BGR ``numpy`` frame an
 a frame of the same shape, so it is testable headless (``opencv-python-headless`` has no
 ``imshow``). Only :class:`HudWindow` touches the window system.
 
-Layout (designed to be readable on a projector and in a recorded pitch video)::
+Two views, toggled with **H** in the camera window:
+
+* **simple** (default): status pill + fps, chips for only the actions firing right now
+  (taps such as INVENTORY / SLOT > flash amber), the hand skeleton and joystick centre,
+  and small MOVE / LOOK gauges. No face mesh, no tuning bars.
+* **detailed** (for tuning): the full layout below.
+
+Detailed layout (designed to be readable on a projector and in a recorded pitch video)::
 
     +---------------------------------------------------------------+
     | [LIVE] profile/backend                       30 fps   18 ms   |  status bar
@@ -62,6 +69,15 @@ CHIPS: tuple[tuple[str, str], ...] = (
 )
 CURL_STATES: tuple[str, ...] = ("Rest", "Flex", "Hold", "Extend")
 
+#: Simple HUD: (logical action or tap, chip text) in display order. Only active ones are drawn.
+SIMPLE_LABELS: tuple[tuple[str, str], ...] = (
+    ("forward", "W"), ("left", "A"), ("back", "S"), ("right", "D"),
+    ("jump", "JUMP"), ("sprint", "SPRINT"), ("sneak", "SNEAK"),
+    ("attack", "MINE"), ("interact", "PLACE"),
+    ("look_left", "LOOK <"), ("look_right", "LOOK >"), ("look_up", "LOOK ^"), ("look_down", "LOOK v"),
+    ("inventory", "INVENTORY"), ("hotbar_prev", "< SLOT"), ("hotbar_next", "SLOT >"),
+)
+
 
 @dataclass
 class HudState:
@@ -86,6 +102,8 @@ class HudState:
     pause_hint: str = "show both open palms"     # profile's pause gesture, for the banner
     actions: set[str] | None = None           # override active actions (else derived)
     neutral_palm: tuple[float, float] | None = None   # calibrated palm neutral (image)
+    detail: bool = False                      # False = simple HUD, True = full tuning view (H key)
+    recent_taps: list[str] = field(default_factory=list)   # taps fired in the last ~0.8 s
     palm_range: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -235,6 +253,45 @@ def draw_status_bar(frame: np.ndarray, state: HudState) -> np.ndarray:
     (pw, _), _ = cv2.getTextSize(perf, FONT, 0.8 * s, 2)
     lat_col = GREEN if state.latency_ms < 50 else (AMBER if state.latency_ms < 100 else RED)
     text(frame, perf, (W - pw - int(15 * s), h - int(15 * s)), 0.8 * s, lat_col, 2)
+    return frame
+
+
+def draw_status_simple(frame: np.ndarray, state: HudState) -> np.ndarray:
+    """Simple HUD top line: status pill + fps, and a quiet "H: details" hint on the right."""
+    H, W = frame.shape[:2]
+    s = _s(frame)
+    col = {"LIVE": GREEN, "PAUSED": RED, "ARMING": AMBER, "CALIBRATING": BLUE}.get(state.status, GREY)
+    label = state.status if state.status != "ARMING" else "STARTING"
+    x0, y0 = int(10 * s), int(10 * s)
+    (tw, th), _ = cv2.getTextSize(label, FONT_BOLD, 0.8 * s, 2)
+    h = th + int(18 * s)
+    cv2.rectangle(frame, (x0, y0), (x0 + tw + int(24 * s), y0 + h), col, -1)
+    cv2.putText(frame, label, (x0 + int(12 * s), y0 + h - int(9 * s)), FONT_BOLD, 0.8 * s, BLACK, 2, cv2.LINE_AA)
+    text(frame, f"{state.fps:.0f} fps", (x0 + tw + int(36 * s), y0 + h - int(9 * s)), 0.55 * s, GREY, 1)
+    hint = "H: details"
+    (hw, _), _ = cv2.getTextSize(hint, FONT, 0.5 * s, 1)
+    text(frame, hint, (W - hw - int(12 * s), y0 + h - int(9 * s)), 0.5 * s, GREY, 1)
+    return frame
+
+
+def draw_active_chips(frame: np.ndarray, actions: Iterable[str], taps: Iterable[str] = ()) -> np.ndarray:
+    """Simple HUD: only what is firing right now (green), plus recent one-shot taps (amber)."""
+    H, W = frame.shape[:2]
+    s = _s(frame)
+    tap_set = set(taps)
+    live = set(actions) | tap_set
+    x, y, h = int(10 * s), int(56 * s), int(40 * s)
+    pad = int(12 * s)
+    for act, label in SIMPLE_LABELS:
+        if act not in live:
+            continue
+        (tw, _), _ = cv2.getTextSize(label, FONT_BOLD, 0.75 * s, 2)
+        w = tw + 2 * pad
+        if x + w > W - 5:
+            break
+        cv2.rectangle(frame, (x, y), (x + w, y + h), AMBER if act in tap_set else LIT, -1)
+        cv2.putText(frame, label, (x + pad, y + h - int(12 * s)), FONT_BOLD, 0.75 * s, BLACK, 2, cv2.LINE_AA)
+        x += w + int(6 * s)
     return frame
 
 
@@ -463,7 +520,8 @@ def draw_hud(frame: np.ndarray, features: Features | None, commands: Commands | 
 
     # --- camera-space overlays
     if features is not None:
-        draw_face(out, features)
+        if st.detail:                     # face mesh dots only in the detailed view
+            draw_face(out, features)
         for i, hand in enumerate(features.hands):
             if hand.present:
                 draw_hand(out, hand.landmarks, GREEN if i == 0 else BLUE)
@@ -471,11 +529,15 @@ def draw_hud(frame: np.ndarray, features: Features | None, commands: Commands | 
         draw_neutral_marker(out, st.neutral_palm, st.palm_range, dom, dz)
 
     actions = st.actions if st.actions is not None else active_actions(cmds)
-    draw_status_bar(out, st)
-    draw_action_chips(out, actions, cmds.taps)
+    if st.detail:
+        draw_status_bar(out, st)
+        draw_action_chips(out, actions, cmds.taps)
+    else:
+        draw_status_simple(out, st)
+        draw_active_chips(out, actions, list(cmds.taps) + list(st.recent_taps))
 
-    # --- bottom widgets
-    size = int(min(W * 0.18, H * 0.30))
+    # --- bottom widgets (smaller in the simple view)
+    size = int(min(W * 0.18, H * 0.30)) if st.detail else int(min(W * 0.13, H * 0.22))
     by = H - size - int(44 * s)
     hand_present = bool(fl.get("hand.present", 1.0 if (features and features.hands) else 0.0))
     face_present = bool(fl.get("face.present", 1.0 if (features and features.face.present) else 0.0))
@@ -485,13 +547,14 @@ def draw_hud(frame: np.ndarray, features: Features | None, commands: Commands | 
     draw_head_gauge(out, (int(20 * s) + size, by), size, float(fl.get("face.yaw", 0.0)),
                     float(fl.get("face.pitch", 0.0)), face_present, look_dz,
                     mouse=(cmds.mouse_dx, cmds.mouse_dy))
-    gw = int(min(W * 0.32, 420 * s))
-    curl_state = _dbg(dbg, "curl_state", "fist_state", "curl")
-    draw_gesture_panel(out, (W - gw - int(10 * s), by - int(10 * s)), gw,
-                       str(curl_state) if curl_state is not None else None,
-                       float(fl.get("hand.curl_mean", 0.0)), float(fl.get("hand.pinch", 1.0)),
-                       float(fl.get("face.blend.jawOpen", 0.0)), float(fl.get("face.blend.browInnerUp", 0.0)),
-                       _dbg(dbg, "thresholds") if isinstance(_dbg(dbg, "thresholds"), dict) else None)
+    if st.detail:                         # tuning panel: curl state machine + threshold bars
+        gw = int(min(W * 0.32, 420 * s))
+        curl_state = _dbg(dbg, "curl_state", "fist_state", "curl")
+        draw_gesture_panel(out, (W - gw - int(10 * s), by - int(10 * s)), gw,
+                           str(curl_state) if curl_state is not None else None,
+                           float(fl.get("hand.curl_mean", 0.0)), float(fl.get("hand.pinch", 1.0)),
+                           float(fl.get("face.blend.jawOpen", 0.0)), float(fl.get("face.blend.browInnerUp", 0.0)),
+                           _dbg(dbg, "thresholds") if isinstance(_dbg(dbg, "thresholds"), dict) else None)
 
     # --- centre overlays (highest priority last)
     if st.cue and st.status == "LIVE":

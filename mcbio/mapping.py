@@ -29,6 +29,10 @@ A *profile* (``profiles/*.yaml``) describes everything user-tunable:
 ``bindings_keys``
     logical action -> physical key name, consumed by ``outputs.py``.
 
+Tap actions (``inventory``, ``hotbar_next``, ``hotbar_prev``) are one-shot: they fire once
+when their binding turns on (key press + release, or one mouse-wheel step for the hotbar),
+and again every ``repeat_ms`` while it stays on, if set.
+
 Presence gating: a source whose prefix is ``face.``/``hand.``/``offhand.`` (or a gesture
 built from that tracker) is treated as *absent* while the matching ``*.present`` flag is
 0.  Absent sources reset their detectors and release their action immediately, so a
@@ -52,7 +56,12 @@ from .types import Commands
 #: Actions a binding may drive.  Movement names match ``types.MOVE_KEYS``.
 KEY_ACTIONS = ("forward", "back", "left", "right", "jump", "sneak", "sprint")
 BUTTON_ACTIONS = ("left_button", "right_button")
-ACTIONS = KEY_ACTIONS + BUTTON_ACTIONS
+#: One-shot actions: a press + release on the rising edge (optionally repeated while held).
+TAP_ACTIONS = ("inventory", "hotbar_next", "hotbar_prev")
+ACTIONS = KEY_ACTIONS + BUTTON_ACTIONS + TAP_ACTIONS
+
+#: Fingers (besides the index) the thumb can pinch; flat keys ``hand.pinch_<finger>``.
+FINGER_PINCHES = ("middle", "ring", "little")
 
 #: Opposing pairs: never both held; the one driven harder wins.
 OPPOSING = (("forward", "back"), ("left", "right"))
@@ -61,6 +70,9 @@ OPPOSING = (("forward", "back"), ("left", "right"))
 GESTURE_PRESENCE = {
     "gesture.fist": "hand.present",
     "gesture.pinch": "hand.present",
+    "gesture.pinch_middle": "hand.present",
+    "gesture.pinch_ring": "hand.present",
+    "gesture.pinch_little": "hand.present",
     "gesture.open_palm": "hand.present",
     "gesture.both_open": "offhand.present",   # also needs hand.present, checked inside
     "gesture.both_blink": "face.present",
@@ -75,6 +87,10 @@ GESTURE_DEFAULTS: dict[str, dict[str, float]] = {
     # hand.pinch < on to start, > off to stop; ignored while the hand is a fist
     # (curl_mean >= max_curl_mean) because a fist also brings thumb and index together.
     "pinch": {"on": 0.30, "off": 0.45, "min_hold_ms": 80, "max_curl_mean": 0.5},
+    # Thumb to middle / ring / little fingertip (gesture.pinch_<finger>). Same rule as the
+    # index pinch; in addition only the fingertip NEAREST the thumb can count, so touching
+    # the middle finger (with the index right beside it) never also fires the index pinch.
+    "finger_pinch": {"on": 0.30, "off": 0.45, "min_hold_ms": 100, "max_curl_mean": 0.5},
     # Open palm: curl_mean < on (release > off) and thumb away from index (pinch >= min_pinch).
     "open_palm": {"on": 0.20, "off": 0.30, "min_pinch": 0.5},
     # Both eyes closed: min(eyeBlinkLeft, eyeBlinkRight) > on (release < off).
@@ -141,6 +157,7 @@ class Binding:
     min_hold_ms: float = 0.0
     min_release_ms: float = 0.0
     mode: str | None = None
+    repeat_ms: float = 0.0          # tap actions only: re-fire every repeat_ms while held (0 = once)
 
     @classmethod
     def from_dict(cls, d: dict, index: int) -> "Binding":
@@ -161,7 +178,10 @@ class Binding:
             min_hold_ms=float(d.get("min_hold_ms", 0)),
             min_release_ms=float(d.get("min_release_ms", 0)),
             mode=d.get("mode"),
+            repeat_ms=float(d.get("repeat_ms", 0)),
         )
+        if b.repeat_ms < 0:
+            raise ValueError(f"{where}: repeat_ms must be >= 0")
         b.make_detector()           # validates op / threshold ordering early
         return b
 
@@ -313,6 +333,10 @@ class _Gestures:
         p = cfg["pinch"]
         self.pinch = Hysteresis(p["on"], p["off"], "<", p["min_hold_ms"])
         self.pinch_max_curl = p["max_curl_mean"]
+        fp = cfg["finger_pinch"]
+        self.finger_pinch = {n: Hysteresis(fp["on"], fp["off"], "<", fp["min_hold_ms"])
+                             for n in FINGER_PINCHES}
+        self.finger_pinch_max_curl = fp["max_curl_mean"]
         o = cfg["open_palm"]
         self.open_hand = Hysteresis(o["on"], o["off"], "<")
         self.open_off = Hysteresis(o["on"], o["off"], "<")
@@ -336,13 +360,23 @@ class _Gestures:
         if hand:
             curl_mean = flat.get("hand.curl_mean", 0.0)
             self.curl.update(curl_mean, t)
+            # Thumb-tip distance to each fingertip; only the nearest one may count as a pinch.
+            dists = {"index": flat.get("hand.pinch", 9.0)}
+            dists.update({n: flat.get(f"hand.pinch_{n}", 9.0) for n in FINGER_PINCHES})
+            nearest = min(dists, key=lambda k: dists[k])
             # A fist also closes thumb onto index; don't let that read as a pinch.
-            pinch_val = flat.get("hand.pinch", 1.0) if curl_mean < self.pinch_max_curl else 1e9
-            g["gesture.pinch"] = float(self.pinch.update(pinch_val, t))
+            ok = curl_mean < self.pinch_max_curl and nearest == "index"
+            g["gesture.pinch"] = float(self.pinch.update(dists["index"] if ok else 1e9, t))
+            for n in FINGER_PINCHES:
+                ok = curl_mean < self.finger_pinch_max_curl and nearest == n
+                g[f"gesture.pinch_{n}"] = float(self.finger_pinch[n].update(dists[n] if ok else 1e9, t))
         else:
             self.curl.reset()
             self.pinch.reset()
             g["gesture.pinch"] = 0.0
+            for n in FINGER_PINCHES:
+                self.finger_pinch[n].reset()
+                g[f"gesture.pinch_{n}"] = 0.0
         g["gesture.fist"] = float(self.curl.is_closed)
         hand_open = self._open(self.open_hand, flat, "hand", t)
         off_open = self._open(self.open_off, flat, "offhand", t)
@@ -370,6 +404,8 @@ class Mapper:
         self.profile = profile
         self._gestures = _Gestures(profile.gestures)
         self._detectors = [b.make_detector() for b in profile.bindings]
+        self._tap_on = [False] * len(profile.bindings)            # tap bindings: last state
+        self._tap_next: list[float | None] = [None] * len(profile.bindings)   # next repeat time
         self._pause_timer = HoldTimer(profile.pause.hold_s) if profile.pause else None
         mt = profile.mode_toggle
         self._mode_timer = HoldTimer(mt.trigger.hold_s) if mt else None
@@ -383,6 +419,8 @@ class Mapper:
         self.paused = bool(paused)
         for det in self._detectors:
             det.reset()
+        self._tap_on = [False] * len(self._detectors)
+        self._tap_next = [None] * len(self._detectors)
 
     def toggle_pause(self) -> None:
         self.set_paused(not self.paused)
@@ -451,14 +489,32 @@ class Mapper:
 
         # Evaluate every binding; an action is on if any of its bindings is on.
         drive: dict[str, float] = {}
+        taps: list[str] = []
         bdebug = []
-        for b, det in zip(self.profile.bindings, self._detectors):
+        for i, (b, det) in enumerate(zip(self.profile.bindings, self._detectors)):
             value, present = self._resolve(values, b.source)
             if not present or (b.mode is not None and b.mode != self.mode):
                 det.reset()
                 on = False
             else:
                 on = det.update(value, t)
+            if b.action in TAP_ACTIONS:
+                # One-shot: fire on the rising edge, then every repeat_ms while still held.
+                fire = False
+                if on and not self._tap_on[i]:
+                    fire = True
+                    self._tap_next[i] = t + b.repeat_ms / 1000.0 if b.repeat_ms > 0 else None
+                elif on and self._tap_next[i] is not None and t >= self._tap_next[i]:
+                    fire = True
+                    self._tap_next[i] = t + b.repeat_ms / 1000.0
+                if not on:
+                    self._tap_next[i] = None
+                self._tap_on[i] = on
+                if fire and b.action not in taps:
+                    taps.append(b.action)
+                bdebug.append({"action": b.action, "source": b.source, "value": value,
+                               "present": present, "on": on})
+                continue
             if on:
                 drive[b.action] = max(drive.get(b.action, -math.inf), b.drive(value))
             bdebug.append({"action": b.action, "source": b.source, "value": value,
@@ -477,5 +533,6 @@ class Mapper:
             mouse_dy=dy,
             left_button="left_button" in drive,
             right_button="right_button" in drive,
+            taps=taps,
             debug=debug,
         )

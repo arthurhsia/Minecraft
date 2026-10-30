@@ -39,7 +39,7 @@ Three control profiles are included: **face + hand** (default), **face only** (f
 - **No flicker.** Every control is a Schmitt-trigger-style comparator (separate on/off thresholds) with optional debounce timers, and signals are smoothed with a One-Euro filter.
 - **Safe by design.** Input is only sent while Minecraft is the front app, everything is released on pause, app switch, quit or crash, and it starts paused.
 - **Fully configurable.** All gestures and thresholds live in plain YAML profiles; no code changes needed.
-- **Live HUD.** The camera window shows tracking, a joystick box, a look gauge, the finger-curl state and which actions are firing.
+- **Live HUD.** A simple view shows status, only the actions firing right now, your hand and small move/look gauges; press **H** for the detailed tuning view (finger-curl state, threshold bars, face mesh).
 - **Built-in experiment mode.** Cue-based reaction-time and accuracy testing with CSV logging and an analysis script (mean ± SD, false activations at rest, latency).
 - **Optional hardware output.** An Arduino Leonardo can act as a real USB keyboard and mouse.
 
@@ -114,12 +114,16 @@ Diagonals work (W + D). If your hand leaves the camera view, all movement stops.
 |---|---|---|---|---|---|
 | Attack / mine (held) | left click | **fist** | curl ≥ 60 % while Flexing/Holding | curl < 40 % (or clearly opening) | state machine |
 | Use / place (held) | right click | **thumb–index pinch** | gap < 0.30 × palm size | > 0.45 | 80 ms; ignored if fingers > 50 % curled |
+| Open inventory (tap) | E | **thumb–middle pinch** | gap < 0.30 × palm size | > 0.45 | 100 ms; fires once per pinch |
+| Next hotbar slot (tap) | scroll down | **thumb–ring pinch** | < 0.30 | > 0.45 | 100 ms; repeats every 0.45 s while held |
+| Previous hotbar slot (tap) | scroll up | **thumb–little pinch** | < 0.30 | > 0.45 | 100 ms; repeats every 0.45 s while held |
 | Jump (held) | Space | **open mouth** | jawOpen > 0.35 | < 0.20 | none |
 | Sprint | Ctrl | **smile** (either side) | mouthSmile > 0.45 | < 0.25 | 120 ms |
 | Sneak | Shift | **raise eyebrows** | browInnerUp > 0.40 | < 0.25 | 150 ms |
 | Pause / resume | | **both palms open** | held 1.0 s | | |
 
 Notes:
+- *Thumb pinches*: only the fingertip **nearest** the thumb counts, so touching the middle finger never also triggers the index pinch (right click). All pinches are ignored while the hand is curled into a fist. If the hotbar moves the wrong way, swap `hotbar_next` / `hotbar_prev` in `bindings_keys`.
 - *Curl* is the average bend of the index–little fingers: 0 % = flat hand, 100 % = tight fist.
 - *Face scores* are MediaPipe blendshapes (0–1) with your resting expression subtracted.
 - *Sprint*: Minecraft keeps you sprinting after Ctrl is released for as long as you keep walking forward, so a quick smile is enough.
@@ -167,6 +171,7 @@ Starts in WALK mode. Sneak and sprint are not mapped in this profile.
 | **F8** (from any app) | Pause / resume (needs Input Monitoring) |
 | **P** or **Space** in the camera window | Pause / resume |
 | **C** in the camera window | Recalibrate |
+| **H** in the camera window | Toggle the detailed HUD (tuning bars, face mesh, all action chips) |
 | **Esc** / **Q** in the camera window, or **Ctrl-C** in Terminal | Quit (everything is released) |
 
 ---
@@ -315,7 +320,7 @@ A Leonardo, Micro or Pro Micro (ATmega32U4) enumerates as a real USB keyboard an
 
 1. Open `arduino/leonardo_hid/leonardo_hid.ino` in the Arduino IDE, choose **Arduino Leonardo** and upload.
 2. Run `python -m mcbio --backend leonardo --port auto`.
-3. Protocol (115200 baud, one line per change): `K+w` / `K-w` key down/up, `M dx dy` relative move (split into ±127 steps), `B+L` / `B-L` / `B+R` / `B-R` buttons, `R` release all, `P` → `OK` ping. A 500 ms watchdog releases everything if the computer stops talking.
+3. Protocol (115200 baud, one line per change): `K+w` / `K-w` key down/up, `M dx dy` relative move (split into ±127 steps), `W n` mouse wheel (hotbar), `B+L` / `B-L` / `B+R` / `B-R` buttons, `R` release all, `P` → `OK` ping. A 500 ms watchdog releases everything if the computer stops talking.
 
 ---
 
@@ -350,7 +355,7 @@ python scripts/analyze_session.py demo_sessions
 ```bash
 python -m pytest -q
 ```
-123 tests run on synthetic data, with no camera, models or real key presses. They cover:
+136 tests run on synthetic data, with no camera, models or real key presses. They cover:
 - curl and head-pose math;
 - One-Euro filtering;
 - hysteresis and debounce;
