@@ -15,6 +15,7 @@ Three control profiles are included: **face + hand** (default), **face only** (f
 
 ## Contents
 - [Features](#features)
+- [Download the Mac app (easiest)](#download-the-mac-app-easiest)
 - [Quick start (macOS)](#quick-start-macos)
 - [Controls](#controls)
 - [Calibration](#calibration)
@@ -45,9 +46,25 @@ Three control profiles are included: **face + hand** (default), **face only** (f
 
 ---
 
+## Download the Mac app (easiest)
+
+No Python or Terminal needed.
+
+1. Open the [Releases page](https://github.com/arthurhsia/Minecraft/releases) and download the `.dmg` for your Mac:
+   - **Apple Silicon** (M1–M4): `Minecraft-Biogaming-<version>-mac-apple-silicon.dmg`
+   - **Intel**: `Minecraft-Biogaming-<version>-mac-intel.dmg`
+   (Apple menu → About This Mac tells you which.)
+2. Open the `.dmg` and drag **Minecraft Biogaming** onto **Applications**.
+3. **First open only:** the app is not signed with a paid Apple Developer ID, so macOS blocks it once. Double-click it, click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+4. The start screen shows your camera, lets you pick **Face + hand / Face only / Hand only**, and checks permissions. Click **Open Settings** next to anything marked *needed* (Accessibility is required for key presses), then press **START**.
+
+Full instructions are in `How to open - READ ME.txt` inside the `.dmg` ([`packaging/HOW_TO_OPEN.txt`](packaging/HOW_TO_OPEN.txt)). Session recordings and a log file (`mcbio.log`) are saved in `~/Documents/Minecraft Biogaming/`.
+
+**Building the app yourself:** the [Build Mac app](.github/workflows/build-mac.yml) workflow builds and smoke-tests both `.dmg` files on GitHub's Mac machines for every change; pushing a tag such as `v0.2.0` attaches them to a release. Locally (on a Mac, from a source setup): `python scripts/download_models.py && pip install pyinstaller && pyinstaller --noconfirm packaging/mcbio.spec && bash packaging/make_dmg.sh`.
+
 ## Quick start (macOS)
 
-Requirements: a Mac (Apple Silicon recommended), a webcam, Minecraft Education Edition, and either Anaconda/Miniconda or Python 3.10–3.12.
+From source, for development. Requirements: a Mac (Apple Silicon recommended), a webcam, Minecraft Education Edition, and either Anaconda/Miniconda or Python 3.10–3.12.
 
 ```bash
 git clone https://github.com/arthurhsia/Minecraft.git
@@ -355,7 +372,7 @@ python scripts/analyze_session.py demo_sessions
 ```bash
 python -m pytest -q
 ```
-136 tests run on synthetic data, with no camera, models or real key presses. They cover:
+147 tests run on synthetic data, with no camera, models or real key presses. They cover:
 - curl and head-pose math;
 - One-Euro filtering;
 - hysteresis and debounce;
