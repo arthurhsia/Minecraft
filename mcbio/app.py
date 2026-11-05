@@ -37,8 +37,10 @@ import numpy as np
 
 from mcbio.types import Calibration, Commands, Features
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_PROFILE = ROOT / "profiles" / "face_hand.yaml"
+from mcbio import paths
+
+ROOT = paths.SOURCE_ROOT
+DEFAULT_PROFILE = paths.profiles_dir() / "face_hand.yaml"
 
 LIVE, PAUSED, ARMING, CALIBRATING = "LIVE", "PAUSED", "ARMING", "CALIBRATING"
 
@@ -393,6 +395,7 @@ class App:
         self._prev_actions: set[str] = set()
         self.last_cmds: Commands = Commands.idle(paused=True)
         self.hud_detail = False                     # H toggles the detailed (tuning) HUD
+        self.output_notice: str | None = None       # persistent HUD line, e.g. "click Minecraft"
         self._recent_taps: dict[str, float] = {}    # tap name -> show-until time (HUD flash)
 
     # ------------------------------------------------------------------ setup
@@ -426,7 +429,7 @@ class App:
         if self._backend is None:
             self._backend = make_backend(cfg.backend, cfg.port,
                                          getattr(self.profile, "bindings_keys", None),
-                                         target_app=cfg.target_app)
+                                         target_app=cfg.target_app, on_focus=self._on_focus)
         if cfg.hud and self._hud_window is None:
             from mcbio.hud import HudWindow
             self._hud_window = HudWindow("mcbio - Minecraft face+hand controller")
@@ -452,6 +455,11 @@ class App:
             cue_cb = getattr(self._source, "cue", None)
             self.protocol = Protocol(seed=f"{cfg.subject}-{cfg.seed}", n_trials=cfg.protocol_trials,
                                      on_cue=cue_cb)
+
+    def _on_focus(self, focused: bool, app: str | None) -> None:
+        """Focus gate callback: keep a visible reminder while Minecraft is not in front."""
+        target = (self.cfg.target_app or "minecraft").title()
+        self.output_notice = None if focused else f"Click the {target} window - controls are off"
 
     def _calib_path(self) -> Path:
         from mcbio import calibration as cal_mod
@@ -709,6 +717,7 @@ class App:
             neutral_palm=self.calib.neutral_palm if self.calib else None,
             palm_range=self.calib.palm_range if self.calib else None,
             detail=self.hud_detail,
+            notice=self.output_notice,
             recent_taps=[k for k, until in self._recent_taps.items() if t < until],
         )
         if self.flow is not None:
@@ -761,11 +770,13 @@ def _raise_keyboard_interrupt(*_: Any) -> None:
 # Backends + CLI
 # ======================================================================================
 def make_backend(name: str, port: str | None = None, bindings_keys: dict[str, str] | None = None,
-                 target_app: str | None = "minecraft") -> Any:
+                 target_app: str | None = "minecraft",
+                 on_focus: Callable[[bool, str | None], None] | None = None) -> Any:
     """Construct an output backend; real backends are focus-gated to ``target_app``.
 
     With ``target_app`` set (default "minecraft"), input is only sent while an app
     whose name contains it is frontmost; switching away releases everything.
+    ``on_focus(focused, app_name)`` is also called on every change (the HUD uses it).
     """
     from mcbio import outputs
     if name == "dry":
@@ -778,6 +789,8 @@ def make_backend(name: str, port: str | None = None, bindings_keys: dict[str, st
             print(("[output ON]  " if focused else "[output OFF] ") +
                   (f"{app} is in front" if focused else f"{app or 'another app'} is in front - "
                    f"waiting for {target_app.title()} (nothing is sent to other apps)"), flush=True)
+            if on_focus is not None:
+                on_focus(focused, app)
         return outputs.FocusGatedOutput(backend, targets=(target_app,), on_change=say)
 
     if name == "pynput":

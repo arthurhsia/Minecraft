@@ -23,7 +23,9 @@ import numpy as np
 from .features import FeatureExtractor
 from .types import Features
 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+from . import paths
+
+MODELS_DIR = paths.models_dir()      # project models/ folder, or inside the packaged app
 DEFAULT_HAND_MODEL = MODELS_DIR / "hand_landmarker.task"
 DEFAULT_FACE_MODEL = MODELS_DIR / "face_landmarker.task"
 

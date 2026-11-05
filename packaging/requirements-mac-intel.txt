@@ -1,0 +1,14 @@
+# Intel (x86_64) Mac app build. MediaPipe stopped publishing Intel-Mac wheels at 0.10.21,
+# which needs NumPy 1.x, so OpenCV is held at a NumPy-1 compatible release too.
+mediapipe==0.10.21
+opencv-contrib-python==4.10.0.84      # only the contrib build: one copy of OpenCV in the app
+numpy<2
+pyyaml
+pynput
+pyserial
+pyobjc-framework-Quartz
+pyobjc-framework-Cocoa
+pyobjc-framework-ApplicationServices
+matplotlib
+pytest
+pyinstaller

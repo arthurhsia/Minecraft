@@ -1,0 +1,54 @@
+MINECRAFT BIOGAMING - HOW TO INSTALL AND OPEN
+=============================================
+
+Which download?
+  - Apple Silicon Mac (M1, M2, M3, M4...): ...-mac-apple-silicon.dmg
+  - Intel Mac:                             ...-mac-intel.dmg
+  Not sure? Apple menu > About This Mac. "Chip: Apple M..." = Apple Silicon,
+  "Processor: Intel..." = Intel.
+
+1. INSTALL
+   Drag "Minecraft Biogaming" onto the Applications folder in this window.
+
+2. FIRST OPEN (one time only)
+   This app is not signed with a paid Apple Developer ID, so macOS blocks it the
+   first time with "Apple could not verify..." / "can't be opened". To allow it:
+     a. Double-click the app in Applications. Click "Done" (or "OK") on the warning.
+     b. Open System Settings > Privacy & Security.
+     c. Scroll down to the message about "Minecraft Biogaming" and click "Open Anyway".
+     d. Double-click the app again and click "Open Anyway" / enter your password.
+   After this it opens normally.
+
+   (Alternative, in Terminal:
+      xattr -dr com.apple.quarantine "/Applications/Minecraft Biogaming.app"
+    then double-click the app.)
+
+3. PERMISSIONS (the start screen shows what is missing)
+   - Camera: click "Allow" when macOS asks.
+   - Accessibility (required - lets the app press keys and move the mouse):
+     click "Open Settings" on the start screen, switch on "Minecraft Biogaming",
+     then quit and reopen the app.
+   - Input Monitoring (optional - for the F8 pause key): same as above.
+   After installing a NEW version you may need to switch Accessibility and Input
+   Monitoring off and on again for the new copy.
+
+4. PLAY
+   - Open Minecraft Education Edition in a window, flat Creative world, auto-jump off.
+   - In Minecraft Biogaming pick Face + hand (or Face only), choose your camera,
+     press START.
+   - Calibration: look at the screen, rest your hand BESIDE your face, hold still;
+     then move your hand to a comfortable edge and hold.
+   - It starts PAUSED: show both open palms for 1 s (or press F8 / Space) to go live,
+     then click into the Minecraft window within 3 seconds.
+   - Controls only work while Minecraft is the front window.
+   - Esc in the camera window returns to the start screen; Esc there quits.
+   - H in the camera window shows the detailed tuning view.
+
+5. IF SOMETHING GOES WRONG
+   - Keys do nothing in Minecraft: Accessibility is off, or Minecraft is not the
+     front window (the camera window says "Click the Minecraft window").
+   - Black / no camera image: allow Camera in System Settings > Privacy & Security >
+     Camera, close other apps using the camera (Zoom, FaceTime), or try the next camera.
+   - The app closes straight away: check the log file
+       ~/Documents/Minecraft Biogaming/mcbio.log
+     and send it to the developer. Session recordings are in the same folder.

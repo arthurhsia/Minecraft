@@ -1,0 +1,16 @@
+# Exact versions for the Apple Silicon (arm64) app build - the set the controller was
+# developed and played with. Used by .github/workflows/build-mac.yml.
+mediapipe==1.1.1
+# Only the contrib build (MediaPipe depends on it; it includes everything opencv-python has),
+# so the app does not ship two copies of OpenCV.
+opencv-contrib-python==5.0.0.93
+numpy==2.5.4
+pyyaml==6.0.3
+pynput==1.8.2
+pyserial==3.5
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-ApplicationServices==12.2.2
+matplotlib==3.11.2
+pytest==9.1.1
+pyinstaller

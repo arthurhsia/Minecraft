@@ -103,6 +103,7 @@ class HudState:
     actions: set[str] | None = None           # override active actions (else derived)
     neutral_palm: tuple[float, float] | None = None   # calibrated palm neutral (image)
     detail: bool = False                      # False = simple HUD, True = full tuning view (H key)
+    notice: str | None = None                 # persistent amber line, e.g. "click the Minecraft window"
     recent_taps: list[str] = field(default_factory=list)   # taps fired in the last ~0.8 s
     palm_range: float | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -434,6 +435,18 @@ def draw_gesture_panel(frame: np.ndarray, origin: tuple[int, int], width: int,
     return frame
 
 
+def draw_notice(frame: np.ndarray, message: str) -> np.ndarray:
+    """Persistent amber strip near the top centre (e.g. output paused: Minecraft not in front)."""
+    H, W = frame.shape[:2]
+    s = _s(frame)
+    (tw, th), _ = cv2.getTextSize(message, FONT_BOLD, 0.75 * s, 2)
+    x, y = W // 2 - tw // 2 - int(16 * s), int(110 * s)
+    cv2.rectangle(frame, (x, y), (x + tw + int(32 * s), y + th + int(22 * s)), AMBER, -1)
+    cv2.putText(frame, message, (x + int(16 * s), y + th + int(11 * s)), FONT_BOLD, 0.75 * s,
+                BLACK, 2, cv2.LINE_AA)
+    return frame
+
+
 def draw_banner(frame: np.ndarray, title: str, subtitle: str = "",
                 color: tuple[int, int, int] = RED) -> np.ndarray:
     """Big centred banner (PAUSED / STARTING IN 3)."""
@@ -555,6 +568,9 @@ def draw_hud(frame: np.ndarray, features: Features | None, commands: Commands | 
                            float(fl.get("hand.curl_mean", 0.0)), float(fl.get("hand.pinch", 1.0)),
                            float(fl.get("face.blend.jawOpen", 0.0)), float(fl.get("face.blend.browInnerUp", 0.0)),
                            _dbg(dbg, "thresholds") if isinstance(_dbg(dbg, "thresholds"), dict) else None)
+
+    if st.notice and st.status in ("LIVE", "ARMING"):
+        draw_notice(out, st.notice)
 
     # --- centre overlays (highest priority last)
     if st.cue and st.status == "LIVE":
