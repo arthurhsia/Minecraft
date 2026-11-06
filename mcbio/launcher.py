@@ -303,6 +303,14 @@ def self_test() -> int:
     if sys.platform == "darwin":                # (pynput needs a display on Linux)
         import pynput  # noqa: F401 - key output
         import Quartz  # noqa: F401 - relative mouse + focus lock
+    # Start/stop the global F8 listener exactly as a session does (it crashed the app on
+    # newer macOS when it came from pynput). Without Input Monitoring it reports "off".
+    from mcbio.app import GlobalHotkey
+    hk = GlobalHotkey("f8")
+    hk_state = "on" if hk.start() else f"off ({hk.error})"
+    time.sleep(0.3)
+    hk.stop()
+    print(f"F8 hotkey: {hk_state}")
     print(f"OK: mediapipe {mediapipe.__version__}, opencv {cv2.__version__}, "
           f"profiles {len(PROFILES)}, tracker ran (face={feats.face.present}, hands={len(feats.hands)})")
     return 0
