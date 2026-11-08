@@ -130,35 +130,131 @@ class SyntheticSource:
 # ======================================================================================
 # Global hotkey (F8)
 # ======================================================================================
-class GlobalHotkey:
-    """System-wide hotkey using a pynput keyboard Listener (background thread).
+#: macOS virtual key codes (kVK_*) for the hotkeys we support.
+MAC_KEYCODES = {"f8": 100, "f9": 101, "f10": 109, "f7": 98}
 
-    macOS: the terminal/IDE needs *Input Monitoring* permission, otherwise the listener
-    silently receives nothing. If pynput is unavailable (e.g. no display) we degrade to the
-    HUD-window keys (P / Space) and report ``ok = False``.
+
+class _QuartzKeyTap:
+    """macOS global key listener built directly on a Quartz event tap (listen-only).
+
+    Replaces pynput's keyboard ``Listener`` on macOS: that listener looks up the keyboard
+    layout (``TSMGetInputSourceProperty``) on its background thread, which recent macOS
+    versions forbid off the main thread and answer by killing the process
+    (EXC_BREAKPOINT in ``dispatch_assert_queue``). This tap only compares key codes, so
+    nothing here touches the Text Services Manager. Needs *Input Monitoring*: without it
+    ``CGEventTapCreate`` returns None and :meth:`start` raises ``PermissionError``.
     """
 
-    def __init__(self, key: str = "f8") -> None:
+    def __init__(self, keycode: int, on_press: Callable[[], None], quartz: Any = None) -> None:
+        self.keycode = keycode
+        self.on_press = on_press
+        self._q = quartz
+        self._tap: Any = None
+        self._loop: Any = None
+        self._thread: threading.Thread | None = None
+
+    def _callback(self, proxy: Any, etype: int, event: Any, refcon: Any) -> Any:
+        q = self._q
+        if etype == q.kCGEventKeyDown:
+            code = q.CGEventGetIntegerValueField(event, q.kCGKeyboardEventKeycode)
+            repeat = q.CGEventGetIntegerValueField(event, q.kCGKeyboardEventAutorepeat)
+            if code == self.keycode and not repeat:
+                self.on_press()
+        elif etype in (q.kCGEventTapDisabledByTimeout, q.kCGEventTapDisabledByUserInput):
+            q.CGEventTapEnable(self._tap, True)        # macOS switched the tap off: re-arm
+        return event
+
+    def start(self) -> None:
+        if self._q is None:
+            import Quartz   # lazy: macOS only
+            self._q = Quartz
+        q = self._q
+        self._tap = q.CGEventTapCreate(q.kCGSessionEventTap, q.kCGHeadInsertEventTap,
+                                       q.kCGEventTapOptionListenOnly,
+                                       q.CGEventMaskBit(q.kCGEventKeyDown), self._callback, None)
+        if self._tap is None:
+            raise PermissionError("Input Monitoring not granted")
+        ready = threading.Event()
+
+        tap = self._tap
+
+        def run() -> None:
+            src = q.CFMachPortCreateRunLoopSource(None, tap, 0)
+            loop = q.CFRunLoopGetCurrent()
+            self._loop = loop
+            q.CFRunLoopAddSource(loop, src, q.kCFRunLoopCommonModes)
+            q.CGEventTapEnable(tap, True)
+            ready.set()
+            q.CFRunLoopRun()
+            # Tear down on this thread, before it exits, so nothing of the tap outlives it.
+            q.CFRunLoopRemoveSource(loop, src, q.kCFRunLoopCommonModes)
+            q.CFMachPortInvalidate(tap)
+
+        self._thread = threading.Thread(target=run, name="mcbio-hotkey", daemon=True)
+        self._thread.start()
+        ready.wait(2.0)
+
+    def stop(self, timeout: float = 2.0) -> None:
+        """Stop the run loop and WAIT for the thread to finish.
+
+        Joining matters: a tap thread still inside CFRunLoop while Python shuts down
+        (or while a new session starts its own tap) can segfault the process.
+        """
+        q = self._q
+        if q is None:
+            return
+        try:
+            if self._tap is not None:
+                q.CGEventTapEnable(self._tap, False)
+            if self._loop is not None:
+                q.CFRunLoopStop(self._loop)
+                q.CFRunLoopWakeUp(self._loop)
+        except Exception:   # noqa: BLE001 - stopping must not raise
+            pass
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._thread.join(timeout)
+        self._thread = None
+        self._tap = self._loop = None
+
+
+class GlobalHotkey:
+    """System-wide hotkey (default F8) running on a background thread.
+
+    * macOS: a Quartz event tap (:class:`_QuartzKeyTap`), safe on every macOS version.
+    * elsewhere: a pynput keyboard ``Listener``.
+
+    Needs *Input Monitoring* on macOS. If the listener cannot start (no permission, no
+    display, ...) we degrade to the HUD-window keys (P / Space) and report ``ok = False``.
+    """
+
+    def __init__(self, key: str = "f8", platform: str | None = None, quartz: Any = None) -> None:
         self.key = key
         self.ok = False
         self.error: str | None = None
         self._pressed = threading.Event()
         self._listener: Any = None
+        self._platform = platform or sys.platform
+        self._quartz = quartz
 
     def start(self) -> bool:
         try:
-            from pynput import keyboard   # lazy: needs a display / permissions
-            target = getattr(keyboard.Key, self.key)
+            if self._platform == "darwin":
+                tap = _QuartzKeyTap(MAC_KEYCODES[self.key], self._pressed.set, self._quartz)
+                tap.start()
+                self._listener = tap
+            else:
+                from pynput import keyboard   # lazy: needs a display / permissions
+                target = getattr(keyboard.Key, self.key)
 
-            def on_press(k: Any) -> None:
-                if k == target:
-                    self._pressed.set()
+                def on_press(k: Any) -> None:
+                    if k == target:
+                        self._pressed.set()
 
-            self._listener = keyboard.Listener(on_press=on_press)
-            self._listener.daemon = True
-            self._listener.start()
+                self._listener = keyboard.Listener(on_press=on_press)
+                self._listener.daemon = True
+                self._listener.start()
             self.ok = True
-        except Exception as e:   # noqa: BLE001 - ImportError, display errors, ...
+        except Exception as e:   # noqa: BLE001 - ImportError, display errors, no permission ...
             self.error = f"{type(e).__name__}: {str(e).splitlines()[0] if str(e) else ''}"
             self.ok = False
         return self.ok
