@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from mcbio import macperms, paths
+from mcbio import macapp, macperms, paths
 
 WINDOW = "mcbio - Minecraft face+hand controller"     # shared with the HUD window
 W, H = 1280, 720
@@ -44,11 +44,14 @@ PERMS: tuple[tuple[str, str, str], ...] = (
     ("input_monitoring", "Input Monitoring", "for the F8 pause key (optional)"),
 )
 MAX_CAMERAS = 4
+#: (label, --game value) for the Game buttons.
+GAMES: tuple[tuple[str, str], ...] = (("Education / Bedrock", "education"), ("Java Edition", "java"))
 
 
 @dataclass
 class StartState:
     profile: int = 0
+    game: int = 0
     camera: int = 0
     camera_ok: bool = False
     perms: dict[str, bool | None] = field(default_factory=dict)
@@ -84,6 +87,7 @@ def draw_start_screen(preview: np.ndarray | None, st: StartState) -> tuple[np.nd
 
     text(img, paths.APP_NAME, (40, 64), 1.3, WHITE, 3, FONT_BOLD)
     text(img, "Play Minecraft with your face and hands", (40, 100), 0.7, GREY, 2)
+    text(img, f"Version {paths.app_version()}", (680, 100), 0.5, GREY, 1)
 
     # --- camera preview (left)
     px, py, pw, ph = 40, 130, 600, 338
@@ -103,28 +107,38 @@ def draw_start_screen(preview: np.ndarray | None, st: StartState) -> tuple[np.nd
     rx, rw = 680, 560
     text(img, "Controls", (rx, 150), 0.8, WHITE, 2, FONT_BOLD)
     for i, (label, _, desc) in enumerate(PROFILES):
-        y = 165 + i * 62
-        button(f"profile_{i}", rx, y, 170, 48, label, on=(i == st.profile), color=BLUE)
-        text(img, desc, (rx + 185, y + 30), 0.48, WHITE if i == st.profile else GREY, 1)
+        y = 160 + i * 52
+        button(f"profile_{i}", rx, y, 170, 42, label, on=(i == st.profile), color=BLUE)
+        text(img, desc, (rx + 185, y + 27), 0.48, WHITE if i == st.profile else GREY, 1)
+
+    # --- game
+    text(img, "Game", (rx, 342), 0.8, WHITE, 2, FONT_BOLD)
+    for i, (label, _) in enumerate(GAMES):
+        button(f"game_{i}", rx + 90 + i * 240, 314, 230, 42, label, on=(i == st.game), color=BLUE, scale=0.6)
 
     # --- permissions
-    text(img, "Permissions", (rx, 375), 0.8, WHITE, 2, FONT_BOLD)
+    text(img, "Permissions", (rx, 400), 0.8, WHITE, 2, FONT_BOLD)
     for i, (key, label, why) in enumerate(PERMS):
-        y = 392 + i * 50
+        y = 412 + i * 44
         ok = st.camera_ok if key == "camera" else st.perms.get(key)
         col, word = (GREEN, "OK") if ok else ((AMBER, "?") if ok is None else (RED, "needed"))
-        cv2.circle(img, (rx + 12, y + 20), 9, col, -1, cv2.LINE_AA)
-        text(img, f"{label}", (rx + 32, y + 27), 0.6, WHITE, 2)
-        text(img, f"{word} - {why}", (rx + 210, y + 27), 0.5, col if not ok else GREY, 1)
+        cv2.circle(img, (rx + 12, y + 18), 9, col, -1, cv2.LINE_AA)
+        text(img, f"{label}", (rx + 32, y + 25), 0.6, WHITE, 2)
+        text(img, f"{word} - {why}", (rx + 210, y + 25), 0.5, col if not ok else GREY, 1)
         if not ok and sys.platform == "darwin":
-            button(f"perm_{key}", rx + rw - 150, y + 2, 150, 38, "Open Settings", scale=0.55)
+            button(f"perm_{key}", rx + rw - 150, y + 2, 150, 36, "Open Settings", scale=0.55)
 
     # --- start
-    button("start", rx, 560, rw, 70, "START", on=True, color=GREEN, scale=1.2)
-    if st.message:
-        for i, line in enumerate(wrap(st.message, rw, 0.55, 1, FONT)[:2]):
-            text(img, line, (rx, 656 + i * 22), 0.55, RED if st.message_is_error else AMBER, 1)
-    text(img, "Keys: 1/2/3 controls - Tab camera - Enter start - Esc quit", (40, H - 18), 0.5, GREY, 1)
+    button("start", rx, 556, rw, 64, "START", on=True, color=GREEN, scale=1.2)
+    msg, is_err = st.message, st.message_is_error
+    if not msg and GAMES[st.game][1] == "java":
+        from mcbio.app import JAVA_SPRINT_NOTE
+        msg, is_err = JAVA_SPRINT_NOTE, False
+    if msg:
+        for i, line in enumerate(wrap(msg, rw, 0.55, 1, FONT)[:2]):
+            text(img, line, (rx, 646 + i * 22), 0.55, RED if is_err else AMBER, 1)
+    text(img, "Keys: 1/2/3 controls - G game - Tab camera - Enter start - Esc or Cmd-Q quit",
+         (40, H - 18), 0.5, GREY, 1)
     data = str(paths.data_dir(create=False)).replace(str(paths.Path.home()), "~")
     if len(data) > 48:
         data = "..." + data[-45:]
@@ -144,6 +158,7 @@ def controller_args(st: StartState) -> list[str]:
     """CLI arguments for the chosen settings (what START runs)."""
     profile = paths.profiles_dir() / PROFILES[st.profile][1]
     return ["--profile", str(profile), "--camera", str(st.camera), "--calibrate",
+            "--game", GAMES[st.game][1],
             "--backend", "pynput", "--log-dir", str(paths.data_dir() / "sessions")]
 
 
@@ -211,6 +226,7 @@ def start_screen() -> int:
     import cv2
 
     st = StartState()
+    macapp.harden_pynput()                  # main thread: read the keyboard layout once
     _refresh_perms(st)
     if st.perms.get("accessibility") is False:
         macperms.prompt_accessibility()          # adds the app to the Accessibility list
@@ -222,6 +238,7 @@ def start_screen() -> int:
     def open_window() -> None:
         cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WINDOW, W, H)
+        macapp.install_quit_menu()        # OpenCV's window has no menu bar: add Quit / Cmd-Q
         cv2.setMouseCallback(WINDOW, lambda ev, x, y, *_: clicks.append((x, y)) if ev == cv2.EVENT_LBUTTONUP else None)
 
     open_window()
@@ -242,7 +259,7 @@ def start_screen() -> int:
             break
 
         action = None
-        if key in (27, ord("q")):
+        if key in (27, ord("q")) or macapp.quit_requested():
             break
         if key in (13, 10, ord(" ")):
             action = "start"
@@ -250,6 +267,8 @@ def start_screen() -> int:
             action = f"profile_{key - ord('1')}"
         elif key == 9:
             action = "cam_next"
+        elif key == ord("g"):
+            action = f"game_{(st.game + 1) % len(GAMES)}"
         while clicks:
             action = hit(buttons, *clicks.pop(0)) or action
 
@@ -257,6 +276,9 @@ def start_screen() -> int:
             st.camera = (st.camera + 1) % MAX_CAMERAS
         elif action == "cam_prev":
             st.camera = (st.camera - 1) % MAX_CAMERAS
+        elif action and action.startswith("game_"):
+            st.game = int(action.split("_")[1])
+            st.message = ""
         elif action and action.startswith("profile_"):
             st.profile = int(action.split("_")[1])
         elif action and action.startswith("perm_"):
@@ -278,6 +300,8 @@ def start_screen() -> int:
                 continue
             preview.release()                          # the controller opens the camera itself
             st.message, st.message_is_error = run_controller(st)
+            if macapp.quit_requested():
+                break
             open_window()                              # the HUD closed the shared window
     preview.release()
     cv2.destroyAllWindows()
@@ -307,10 +331,12 @@ def self_test() -> int:
     # newer macOS when it came from pynput). Without Input Monitoring it reports "off".
     from mcbio.app import GlobalHotkey
     hk = GlobalHotkey("f8")
+    hardened = macapp.harden_pynput()
     hk_state = "on" if hk.start() else f"off ({hk.error})"
     time.sleep(0.3)
     hk.stop()
-    print(f"F8 hotkey: {hk_state}")
+    print(f"F8 hotkey: {hk_state} | pynput layout cache: {'on' if hardened else 'off'} | "
+          f"version {paths.app_version()}")
     print(f"OK: mediapipe {mediapipe.__version__}, opencv {cv2.__version__}, "
           f"profiles {len(PROFILES)}, tracker ran (face={feats.face.present}, hands={len(feats.hands)})")
     return 0

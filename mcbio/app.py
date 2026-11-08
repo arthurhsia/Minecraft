@@ -44,6 +44,17 @@ DEFAULT_PROFILE = paths.profiles_dir() / "face_hand.yaml"
 
 LIVE, PAUSED, ARMING, CALIBRATING = "LIVE", "PAUSED", "ARMING", "CALIBRATING"
 
+#: Which Minecraft is being played. ``also_targets`` are extra front-app names the
+#: focus lock accepts; ``sprint_key`` replaces Ctrl for sprint (see JAVA_SPRINT_NOTE).
+GAMES: dict[str, dict[str, Any]] = {
+    "education": {"label": "Education / Bedrock", "also_targets": (), "sprint_key": None},
+    # Java Edition runs inside a Java process, so the front app can be called "java".
+    # On macOS, Ctrl + click is a right click in Java Edition, so holding Ctrl to sprint
+    # would turn mining into placing: sprint is sent as R instead (bind it in-game).
+    "java": {"label": "Java Edition", "also_targets": ("java",), "sprint_key": "r"},
+}
+JAVA_SPRINT_NOTE = "In Java Edition: Options > Controls > Key Binds > set Sprint to R, and turn Auto-Jump off."
+
 
 # ======================================================================================
 # Frame sources
@@ -410,6 +421,7 @@ class AppConfig:
     subject: str = "anon"
     start_delay: float = 3.0
     target_app: str | None = "minecraft"   # only send input while this app is in front
+    game: str = "education"                 # education | java (see GAMES)
     hotkey: bool | None = None              # None = auto (off for synthetic+dry)
     realtime: bool | None = None            # synthetic pacing; None = auto (on with HUD)
     verbose: bool = True                    # print action edges in headless mode
@@ -503,6 +515,9 @@ class App:
         self._flatten = feat_mod.flatten
         if self._mapper is None:
             self.profile = Profile.load(cfg.profile)
+            sprint = GAMES.get(cfg.game, GAMES["education"])["sprint_key"]
+            if sprint and self.profile.bindings_keys.get("sprint") == "ctrl":
+                self.profile.bindings_keys["sprint"] = sprint
             self._mapper = Mapper(self.profile)
         else:
             self.profile = getattr(self._mapper, "profile", None)
@@ -525,7 +540,8 @@ class App:
         if self._backend is None:
             self._backend = make_backend(cfg.backend, cfg.port,
                                          getattr(self.profile, "bindings_keys", None),
-                                         target_app=cfg.target_app, on_focus=self._on_focus)
+                                         target_app=cfg.target_app, on_focus=self._on_focus,
+                                         also_targets=GAMES.get(cfg.game, GAMES["education"])["also_targets"])
         if cfg.hud and self._hud_window is None:
             from mcbio.hud import HudWindow
             self._hud_window = HudWindow("mcbio - Minecraft face+hand controller")
@@ -663,7 +679,10 @@ class App:
         try:
             self._setup()
             first = True
+            from mcbio import macapp
             while not self.stop:
+                if macapp.quit_requested():            # app menu Quit / Cmd-Q
+                    break
                 frame, t, feats = self._source.grab()
                 t_cap = time.perf_counter()
                 if feats is None:
@@ -867,7 +886,8 @@ def _raise_keyboard_interrupt(*_: Any) -> None:
 # ======================================================================================
 def make_backend(name: str, port: str | None = None, bindings_keys: dict[str, str] | None = None,
                  target_app: str | None = "minecraft",
-                 on_focus: Callable[[bool, str | None], None] | None = None) -> Any:
+                 on_focus: Callable[[bool, str | None], None] | None = None,
+                 also_targets: tuple[str, ...] = ()) -> Any:
     """Construct an output backend; real backends are focus-gated to ``target_app``.
 
     With ``target_app`` set (default "minecraft"), input is only sent while an app
@@ -887,7 +907,7 @@ def make_backend(name: str, port: str | None = None, bindings_keys: dict[str, st
                    f"waiting for {target_app.title()} (nothing is sent to other apps)"), flush=True)
             if on_focus is not None:
                 on_focus(focused, app)
-        return outputs.FocusGatedOutput(backend, targets=(target_app,), on_change=say)
+        return outputs.FocusGatedOutput(backend, targets=(target_app, *also_targets), on_change=say)
 
     if name == "pynput":
         return gate(outputs.PynputOutput(bindings_keys))
@@ -926,6 +946,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--trials", type=int, default=30, help="number of protocol cues")
     p.add_argument("--subject", default="anon", help="participant ID for logs/calibration")
     p.add_argument("--start-delay", type=float, default=3.0, help="arming countdown seconds")
+    p.add_argument("--game", choices=tuple(GAMES), default="education",
+                   help="education (Education/Bedrock) or java (Java Edition: also accepts the 'java' "
+                        "window, sends sprint as R)")
     p.add_argument("--target-app", default="minecraft",
                    help="only send input while the frontmost app's name contains this (default: minecraft)")
     p.add_argument("--any-app", action="store_true", help="send input to whatever app is in front (not recommended)")
@@ -947,7 +970,7 @@ def config_from_args(argv: list[str] | None = None) -> AppConfig:
         camera=a.camera, width=w, height=h, calibrate=a.calibrate, calib_path=a.calib_path,
         hand=a.hand, hud=not a.no_hud, synthetic=a.synthetic, seed=a.seed, frames=a.frames,
         log_dir=a.log_dir, protocol=a.protocol, protocol_trials=a.trials, subject=a.subject,
-        start_delay=a.start_delay, target_app=None if a.any_app else a.target_app, hotkey=False if a.no_hotkey else None,
+        start_delay=a.start_delay, target_app=None if a.any_app else a.target_app, game=a.game, hotkey=False if a.no_hotkey else None,
         realtime=True if a.realtime else None, quiet=a.quiet,
     )
 

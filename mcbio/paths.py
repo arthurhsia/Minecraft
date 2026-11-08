@@ -49,3 +49,16 @@ def data_dir(create: bool = True) -> Path:
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def app_version() -> str:
+    """The app's version (from the bundle's Info.plist), or "source" when run from source."""
+    if not is_frozen():
+        return "source"
+    import plistlib
+    try:
+        plist = Path(sys.executable).resolve().parents[1] / "Info.plist"   # Contents/MacOS/x -> Contents/
+        with open(plist, "rb") as fh:
+            return str(plistlib.load(fh).get("CFBundleShortVersionString", "unknown"))
+    except (OSError, ValueError, IndexError):
+        return "unknown"
