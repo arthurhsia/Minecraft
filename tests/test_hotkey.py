@@ -44,6 +44,15 @@ class FakeQuartz:
     def CFRunLoopStop(self, loop):
         self.stopped.set()
 
+    def CFRunLoopWakeUp(self, loop):
+        pass
+
+    def CFRunLoopRemoveSource(self, loop, src, mode):
+        self.removed = True
+
+    def CFMachPortInvalidate(self, port):
+        self.invalidated = True
+
     def CGEventGetIntegerValueField(self, event, field):
         return event[field]
 
@@ -66,8 +75,12 @@ def test_mac_hotkey_uses_event_tap_and_detects_f8():
     assert hk.poll() and not hk.poll()                     # once per press
     cb(None, q.kCGEventTapDisabledByTimeout, None, None)   # macOS disabled the tap -> re-enable
     assert q.enabled[-1] is True
+    tap = hk._listener
+    thread = tap._thread
     hk.stop()
-    assert q.stopped.wait(1) and q.enabled[-1] is False
+    assert q.stopped.is_set() and q.enabled[-1] is False
+    assert not thread.is_alive()                           # stop() waits for the tap thread
+    assert q.removed and q.invalidated                     # tap torn down on its own thread
 
 
 def test_mac_hotkey_without_input_monitoring_degrades():

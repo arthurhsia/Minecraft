@@ -176,19 +176,30 @@ class _QuartzKeyTap:
             raise PermissionError("Input Monitoring not granted")
         ready = threading.Event()
 
+        tap = self._tap
+
         def run() -> None:
-            src = q.CFMachPortCreateRunLoopSource(None, self._tap, 0)
-            self._loop = q.CFRunLoopGetCurrent()
-            q.CFRunLoopAddSource(self._loop, src, q.kCFRunLoopCommonModes)
-            q.CGEventTapEnable(self._tap, True)
+            src = q.CFMachPortCreateRunLoopSource(None, tap, 0)
+            loop = q.CFRunLoopGetCurrent()
+            self._loop = loop
+            q.CFRunLoopAddSource(loop, src, q.kCFRunLoopCommonModes)
+            q.CGEventTapEnable(tap, True)
             ready.set()
             q.CFRunLoopRun()
+            # Tear down on this thread, before it exits, so nothing of the tap outlives it.
+            q.CFRunLoopRemoveSource(loop, src, q.kCFRunLoopCommonModes)
+            q.CFMachPortInvalidate(tap)
 
         self._thread = threading.Thread(target=run, name="mcbio-hotkey", daemon=True)
         self._thread.start()
         ready.wait(2.0)
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 2.0) -> None:
+        """Stop the run loop and WAIT for the thread to finish.
+
+        Joining matters: a tap thread still inside CFRunLoop while Python shuts down
+        (or while a new session starts its own tap) can segfault the process.
+        """
         q = self._q
         if q is None:
             return
@@ -197,8 +208,12 @@ class _QuartzKeyTap:
                 q.CGEventTapEnable(self._tap, False)
             if self._loop is not None:
                 q.CFRunLoopStop(self._loop)
+                q.CFRunLoopWakeUp(self._loop)
         except Exception:   # noqa: BLE001 - stopping must not raise
             pass
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._thread.join(timeout)
+        self._thread = None
         self._tap = self._loop = None
 
 
