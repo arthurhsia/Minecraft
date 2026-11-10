@@ -33,15 +33,20 @@ Which download?
    Monitoring off and on again for the new copy.
 
 4. PLAY
-   - Open Minecraft Education Edition in a window, flat Creative world, auto-jump off.
+   - Open Minecraft in a window, flat Creative world, auto-jump off.
    - In Minecraft Biogaming pick Face + hand (or Face only), choose your camera,
-     press START.
+     choose the Game (Education / Bedrock, or Java Edition), press START.
+   - Java Edition only: in Minecraft go to Options > Controls > Key Binds and set
+     Sprint to R. (On a Mac, holding Ctrl turns clicks into right clicks in Java
+     Edition, so the app sends R for sprint instead of Ctrl.)
    - Calibration: look at the screen, rest your hand BESIDE your face, hold still;
      then move your hand to a comfortable edge and hold.
    - It starts PAUSED: show both open palms for 1 s (or press F8 / Space) to go live,
      then click into the Minecraft window within 3 seconds.
    - Controls only work while Minecraft is the front window.
    - Esc in the camera window returns to the start screen; Esc there quits.
+     Minecraft Biogaming > Quit (Cmd-Q) quits from anywhere; all keys are released.
+   - The start screen shows the version (top right). Mention it when reporting a problem.
    - H in the camera window shows the detailed tuning view.
 
 5. IF SOMETHING GOES WRONG

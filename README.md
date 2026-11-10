@@ -56,7 +56,11 @@ No Python or Terminal needed.
    (Apple menu → About This Mac tells you which.)
 2. Open the `.dmg` and drag **Minecraft Biogaming** onto **Applications**.
 3. **First open only:** the app is not signed with a paid Apple Developer ID, so macOS blocks it once. Double-click it, click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
-4. The start screen shows your camera, lets you pick **Face + hand / Face only / Hand only**, and checks permissions. Click **Open Settings** next to anything marked *needed* (Accessibility is required for key presses), then press **START**.
+4. The start screen shows your camera, lets you pick **Face + hand / Face only / Hand only** and the game (**Education / Bedrock** or **Java Edition**), and checks permissions. Click **Open Settings** next to anything marked *needed* (Accessibility is required for key presses), then press **START**.
+
+Quit with **Minecraft Biogaming → Quit** or **⌘Q**; the version is shown at the top right of the start screen.
+
+**Java Edition:** choose *Java Edition* on the start screen (or `--game java` from source), then in Minecraft set **Options → Controls → Key Binds → Sprint** to **R**. On a Mac, holding Ctrl turns clicks into right clicks in Java Edition, so the app sends R for sprint instead of Ctrl. The focus lock also accepts Java's `java` window.
 
 Full instructions are in `How to open - READ ME.txt` inside the `.dmg` ([`packaging/HOW_TO_OPEN.txt`](packaging/HOW_TO_OPEN.txt)). Session recordings and a log file (`mcbio.log`) are saved in `~/Documents/Minecraft Biogaming/`.
 
@@ -372,7 +376,7 @@ python scripts/analyze_session.py demo_sessions
 ```bash
 python -m pytest -q
 ```
-147 tests run on synthetic data, with no camera, models or real key presses. They cover:
+158 tests run on synthetic data, with no camera, models or real key presses. They cover:
 - curl and head-pose math;
 - One-Euro filtering;
 - hysteresis and debounce;
